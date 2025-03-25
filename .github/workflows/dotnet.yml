@@ -6,7 +6,7 @@ on:
       - 'v*' # Ejemplo: v1.0.0
 
 env:
-  DOTNET_VERSION: '8.0.x' # Ajusta según tu versión de .NET
+  DOTNET_VERSION: '9.0.x' # Ajusta según tu versión de .NET
   PROJECT_NAME: 'MFR'     # Nombre de tu proyecto .csproj
   OUTPUT_DIR: 'publish'
 
