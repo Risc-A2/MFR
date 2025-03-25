@@ -1,9 +1,6 @@
 name: Build and Publish Release
 
-on:
-  push:
-    tags:
-      - 'v*' # Ejemplo: v1.0.0
+on: [push]
 
 env:
   DOTNET_VERSION: '9.0.x' # Ajusta según tu versión de .NET
