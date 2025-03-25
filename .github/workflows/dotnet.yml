@@ -71,6 +71,7 @@ jobs:
       with:
         tag_name: ${{ github.ref }}
         name: Release ${{ github.ref_name }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         body: "Build for Windows, Linux, and macOS. Includes SkiaSharp rendering."
         files: |
           artifacts/MFR-win-x64.zip
