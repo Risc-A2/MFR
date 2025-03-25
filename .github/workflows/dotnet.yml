@@ -12,7 +12,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest,]
         include:
           - os: windows-latest
             runtime: win-x64
@@ -22,10 +22,6 @@ jobs:
             runtime: linux-x64
             ext: ''
             zip-tool: 'zip -r ../MFR-linux-x64.zip ./*'
-          - os: macos-latest
-            runtime: osx-x64
-            ext: ''
-            zip-tool: 'zip -r ../MFR-osx-x64.zip ./*'
 
     steps:
     - name: Checkout code
