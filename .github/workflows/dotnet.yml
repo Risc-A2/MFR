@@ -54,7 +54,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.PROJECT_NAME }}-${{ matrix.runtime }}
-        path: ${{ env.OUTPUT_DIR }}/${{ matrix.runtime }}/../MFR-${{ matrix.runtime }}.zip
+        path: ${{ env.OUTPUT_DIR }}/MFR-${{ matrix.runtime }}.zip
 
   create-release:
     needs: build-and-publish
