@@ -17,15 +17,15 @@ jobs:
           - os: windows-latest
             runtime: win-x64
             ext: '.exe'
-            zip-tool: 'powershell Compress-Archive -Path ./* -DestinationPath ../MFR-${{ matrix.runtime }}.zip -Force'
+            zip-tool: 'powershell Compress-Archive -Path ./* -DestinationPath ../MFR-win-x64.zip -Force'
           - os: ubuntu-latest
             runtime: linux-x64
             ext: ''
-            zip-tool: 'zip -r ../MFR-${{ matrix.runtime }}.zip ./*'
+            zip-tool: 'zip -r ../MFR-linux-x64.zip ./*'
           - os: macos-latest
             runtime: osx-x64
             ext: ''
-            zip-tool: 'zip -r ../MFR-${{ matrix.runtime }}.zip ./*'
+            zip-tool: 'zip -r ../MFR-osx-x64.zip ./*'
 
     steps:
     - name: Checkout code
