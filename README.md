@@ -27,7 +27,7 @@
 
 ### Ejecución
 ```bash
-git clone https://github.com/TuUsuario/MFR.git
+git clone https://github.com/Risc-A2/MFR.git
 cd MFR
 dotnet run --project MFR.csproj -- "ruta/a/tu/archivo.mid"
 ```
