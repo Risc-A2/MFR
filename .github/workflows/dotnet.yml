@@ -56,26 +56,3 @@ jobs:
         name: ${{ env.PROJECT_NAME }}-${{ matrix.runtime }}
         path: ${{ env.OUTPUT_DIR }}/MFR-${{ matrix.runtime }}.zip
 
-  create-release:
-    needs: build-and-publish
-    runs-on: ubuntu-latest
-
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        tag_name: ${{ github.ref }}
-        name: Release ${{ github.ref_name }}
-        token: ${{ secrets.GITHUB_TOKEN }}
-        body: "Build for Windows, Linux, and macOS. Includes SkiaSharp rendering."
-        files: |
-          artifacts/MFR-win-x64.zip
-          artifacts/MFR-linux-x64.zip
-          artifacts/MFR-osx-x64.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
