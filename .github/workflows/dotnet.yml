@@ -58,7 +58,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.PROJECT_NAME }}-${{ matrix.runtime }}
-        path: ${{ env.OUTPUT_DIR }}/${{ env.PROJECT_NAME }}-${{ matrix.runtime }}.zip
+        path: ${{ env.OUTPUT_DIR }}/${{ matrix.runtime }}/../MFR-${{ matrix.runtime }}.zip
 
   create-release:
     needs: build-and-publish
@@ -77,6 +77,8 @@ jobs:
         name: Release ${{ github.ref_name }}
         body: "Build for Windows, Linux, and macOS. Includes SkiaSharp rendering."
         files: |
-          artifacts/${{ env.PROJECT_NAME }}-win-x64.zip
-          artifacts/${{ env.PROJECT_NAME }}-linux-x64.zip
-          artifacts/${{ env.PROJECT_NAME }}-osx-x64.zip
+          artifacts/MFR-win-x64.zip
+          artifacts/MFR-linux-x64.zip
+          artifacts/MFR-osx-x64.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
