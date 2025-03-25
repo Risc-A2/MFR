@@ -1,0 +1,82 @@
+name: Build and Publish Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Ejemplo: v1.0.0
+
+env:
+  DOTNET_VERSION: '9.0.x' # Ajusta según tu versión de .NET
+  PROJECT_NAME: 'MFR'     # Nombre de tu proyecto .csproj
+  OUTPUT_DIR: 'publish'
+
+jobs:
+  build-and-publish:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            runtime: win-x64
+            ext: '.exe'
+          - os: ubuntu-latest
+            runtime: linux-x64
+            ext: ''
+          - os: macos-latest
+            runtime: osx-x64
+            ext: ''
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Install SkiaSharp dependencies (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: sudo apt-get install -y libfontconfig1 libharfbuzz-dev
+    - name: Restore dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration Release --no-restore
+
+    - name: Publish
+      run: |
+        dotnet publish -c Release -r ${{ matrix.runtime }} --self-contained true -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o ${{ env.OUTPUT_DIR }}/${{ matrix.runtime }}
+
+    - name: Zip artifacts
+      run: |
+        cd ${{ env.OUTPUT_DIR }}/${{ matrix.runtime }}
+        zip -r ../${{ env.PROJECT_NAME }}-${{ matrix.runtime }}.zip ./*
+        cd ../..
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PROJECT_NAME }}-${{ matrix.runtime }}
+        path: ${{ env.OUTPUT_DIR }}/${{ env.PROJECT_NAME }}-${{ matrix.runtime }}.zip
+
+  create-release:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref }}
+        name: Release ${{ github.ref_name }}
+        body: "Build for Windows, Linux, and macOS. Includes SkiaSharp rendering."
+        files: |
+          artifacts/${{ env.PROJECT_NAME }}-win-x64.zip
+          artifacts/${{ env.PROJECT_NAME }}-linux-x64.zip
+          artifacts/${{ env.PROJECT_NAME }}-osx-x64.zip
