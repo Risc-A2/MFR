@@ -16,6 +16,7 @@
 
     <ItemGroup>
       <PackageReference Include="SkiaSharp" Version="3.116.1" />
+        <RuntimeHostConfigurationOption Include="System.Drawing.EnableUnixSupport" Value="true" />
     </ItemGroup>
 
 </Project>
