@@ -1,7 +1,7 @@
 # 🎹 MFR - Midi Free Renderer
 
-[![GitHub Release](https://img.shields.io/github/v/release/TuUsuario/MFR?style=flat-square)](https://github.com/TuUsuario/MFR/releases)
-[![Build Status](https://img.shields.io/github/actions/workflow/status/TuUsuario/MFR/dotnet.yml?branch=main&style=flat-square)](https://github.com/TuUsuario/MFR/actions)
+[![GitHub Release](https://img.shields.io/github/v/release/Risc-A2/MFR?style=flat-square)](https://github.com/TuUsuario/MFR/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/Risc-A2/MFR/dotnet.yml?branch=main&style=flat-square)](https://github.com/TuUsuario/MFR/actions)
 [![License](https://img.shields.io/badge/license-GPL-blue?style=flat-square)](LICENSE)
 
 ![MFR Demo](https://i.imgur.com/JQZ1KlP.png)  
