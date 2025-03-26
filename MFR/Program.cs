@@ -133,6 +133,7 @@ namespace MFR
         static SKRuntimeEffect NoteShaderEffect = SKRuntimeEffect.CreateShader(NoteShaderCode, out shaderError);
         public static async Task Main(string[] args)
         {
+            
             Console.WriteLine(shaderError);
             Console.Write("Press any key to continue but before check Shader Errors up...");
             Console.ReadKey();
@@ -151,8 +152,6 @@ namespace MFR
             // Leer el archivo MIDI
             Console.WriteLine("Loading midi...");
             MidiFile midiFile = new MidiFile(midiFilePath);
-            GC.Collect(2, GCCollectionMode.Forced, true, false);
-            GC.WaitForPendingFinalizers();
             double dur = midiFile.GetDurationInMilliseconds();
             int evtCount = 0;
             foreach (var trk in midiFile.Tracks)
@@ -184,7 +183,10 @@ namespace MFR
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = "ffmpeg",
-                    Arguments = $"-y -f rawvideo -pix_fmt rgba -s {width}x{height} -r {fps} -i - -c:v libx264 -pix_fmt yuv420p {outputVideoPath}",
+                    //Arguments = $"-y -f rawvideo -pix_fmt rgba -s {width}x{height} -r {fps} -i - -c:v libx264 -pix_fmt yuv420p {outputVideoPath}",
+                    //h264_qsv
+                    // usar h264_qsv para acceleracion por hardware
+                    Arguments = $"-y -f rawvideo -pix_fmt rgba -s {width}x{height} -r {fps} -i - -c:v h264_qsv -pix_fmt yuv420p {outputVideoPath}",
                     UseShellExecute = false,
                     RedirectStandardInput = true,
                     CreateNoWindow = true
@@ -258,19 +260,19 @@ namespace MFR
             SKColor[] borderColorArray =
                 [borderColor, borderColor, borderColor, borderColor, borderColor, borderColor];
             Console.WriteLine("Allocating managed raw image");
-            byte[] buffer = new byte[surface.ByteCount]; // 3 bytes por píxel (RGB), 4 bytes 
+            byte[] buffer = new byte[info.Width * info.Height * 4]; // 3 bytes por píxel (RGB), 4 bytes 
             Console.WriteLine("Allocating unmanaged raw image pointer");
             var ptr = Marshal.AllocHGlobal(buffer.Length);
-            GC.AddMemoryPressure(surface.ByteCount);
+            GC.AddMemoryPressure(buffer.Length);
             float thickness = 2;
             Console.WriteLine("Rendering...");
             float scaleFactor = 1f;
-            double dtCalc = deltaMidi * 4;
+            double dtCalc = deltaMidi;
             float ss = screenBottom - keyHeight;
             //while (midiTime < dur)
             while (midiTime < 5000)
             {
-                image.Clear(SKColors.White);
+                image.Clear(SKColors.Black);
                 vertices.Unlink();
                 colorsv.Unlink();
                 foreach (var tempo in midiFile.TempoChanges)
@@ -287,9 +289,9 @@ namespace MFR
                 {
                     if (note.Key >= _nt)
                         continue;
-                    float noteY = (float)(((midiTime - (dtCalc)) - note.StartTime) * scaleFactor) + ss;
-                    //float noteY = (float)((midiTime - note.StartTime) * scaleFactor);
+                    //float noteY = (float)(((midiTime) - note.StartTime) * scaleFactor);
                     float noteHeight = (float)((note.EndTime - note.StartTime) * scaleFactor);
+                    float noteY = (float)((midiTime - note.StartTime) * scaleFactor) + (height - noteHeight);
                     if (noteY + noteHeight >= 0 && noteY <= screenBottom)
                     {
                         float noteX = note.Key * keyWidth;
@@ -345,7 +347,7 @@ namespace MFR
                 {
                     var track = k[i].GetTopTrack();
                     var c = SKColors.White;
-                    if (track == 0)
+                    if (track != 0)
                     {
                         c = colors[track - 1];
                     }
@@ -358,6 +360,7 @@ namespace MFR
                     );
                     var whiteKeyPaint = new SKPaint { Shader = NoteShaderEffect.ToShader(whiteKeyUniforms) };
                     image.DrawRect(_wp[i], whiteKeyPaint);
+                    image.DrawRect(_wp[i], _outline);
                     whiteKeyPaint.Dispose();
                     whiteKeyUniforms.Dispose();
                     /*image.DrawRect(_wp[i], pianoKeys[i]);
@@ -367,7 +370,7 @@ namespace MFR
                     if (!WhitePianoKeys[i]) // Teclas negras (omitimos las que están en el espacio)
                     {
                         var blackKeyUniforms = CreateNoteUniforms(
-                            c,
+                            c == SKColors.White ? SKColors.Black : c,
                             _bp[i].Left,
                             _bp[i].Top,
                             _bp[i].Width,
@@ -375,6 +378,7 @@ namespace MFR
                         );
                         var blackKeyPaint = new SKPaint { Shader = NoteShaderEffect.ToShader(blackKeyUniforms) };
                         image.DrawRect(_bp[i], blackKeyPaint);
+                        image.DrawRect(_bp[i], _outline);
                         blackKeyPaint.Dispose();
                         blackKeyUniforms.Dispose();
                         /*
@@ -382,7 +386,7 @@ namespace MFR
                         image.DrawRect(_bp[i], _outline);*/
                     }
                 }
-                surface.PeekPixels().ReadPixels(info, ptr, surface.RowBytes, 0, 0);
+                surface.PeekPixels().ReadPixels(info, ptr, info.RowBytes, 0, 0);
 
                 Marshal.Copy(ptr, buffer, 0, buffer.Length);
 
@@ -392,7 +396,7 @@ namespace MFR
 
             Console.WriteLine("Freeing pointer");
             Marshal.FreeHGlobal(ptr);
-            GC.RemoveMemoryPressure(surface.ByteCount);
+            GC.RemoveMemoryPressure(buffer.Length);
             Console.WriteLine("Freeing image & canvas & Vertex & Colors");
             image.Dispose();
             surface.Dispose();
@@ -405,6 +409,7 @@ namespace MFR
             Console.WriteLine($"video saved in {outputVideoPath}");
             Console.Write("Press any key to exit...");
             Console.ReadKey();
+            return;
         }
 
 #pragma warning disable CS8618 // Non-nullable field must contain a non-null value when exiting constructor. Consider adding the 'required' modifier or declaring as nullable.
