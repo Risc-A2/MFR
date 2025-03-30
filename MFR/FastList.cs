@@ -98,6 +98,23 @@ namespace MFR
 
             return array;
         }
+
+        public void RemoveAll(Predicate<T> predicate)
+        {
+            var f = FastIterate();
+            while (f.MoveNext())
+            {
+                if (predicate(f.Current))
+                {
+                    var s = f.Current;
+                    f.MoveNext();
+                    Remove(s);
+                    RemoveAll(predicate);
+                    break;
+                }
+            }
+            f.Dispose();
+        }
         public bool Remove(T item)
         {
             ListItem current = root.Next; // Comenzamos desde el primer elemento
@@ -170,6 +187,12 @@ namespace MFR
 
         public void Unlink()
         {
+            ListItem current = root.Next;
+            while (current != null) {
+                ListItem next = current.Next;
+                current.Delink();
+                current = next;
+            }
             root.Next = null;
             last = null;
             Length = 0;
@@ -209,6 +232,7 @@ namespace MFR
             if (Disposed)
                 return;
             // TODO release managed resources here
+            Unlink();
             root.Next = null;
             last = null;
             Length = 0;

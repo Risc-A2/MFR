@@ -45,7 +45,6 @@ public struct MidiTempoChange
     public uint Tempo;
     public uint BPM;
 }
-
 public struct MidiNote
 {
     public byte Key = 0;
@@ -53,9 +52,10 @@ public struct MidiNote
     public uint StartTime = 0;
     public uint EndTime = 0;
     public float Duration = 0;
-    public int Track = 0;
+    public uint Track = 0;
     public byte Channel = 0;
     public bool onPlayed = false;
+    public bool Rendered = false;
 
     public MidiNote()
     {
@@ -72,230 +72,380 @@ public struct MidiNote
     {
         onPlayed = val;
     }
+    public void SetRendered(bool val)
+    {
+        Rendered = val;
+    }
+
+
+    public void SetDuration(float val)
+    {
+        Duration = val;
+    }
 }
 
-public class MidiTrack(string fileName, long position, MidiFile files)
+public class MidiTrack(string fileName, long position, MidiFile files, uint track)
 {
+    private BinaryReader _reader;
+    public BinaryReader reader
+    {
+        get
+        {
+            return _reader;
+        }
+    }
     public string Name;
     public string Instrument;
-    public FastList<MidiEvent> Events = new FastList<MidiEvent>();
     //public FastList<MidiNote> Notes = new FastList<MidiNote>();
     public FastList<MidiTempoChange> TempoChanges = new();
+    public FastList<MidiNote> ActiveNotes = new();
     public byte MaxNote = 64;
+    public long stoppoint = 0;
     public byte MinNote = 64;
-    public void Read()
+    uint Swap32(uint value)
     {
-        using (FileStream fs = new FileStream(fileName, FileMode.Open, FileAccess.Read, FileShare.Read))
-        using (BinaryReader reader = new BinaryReader(fs))
+        return ((value >> 24) & 0xff) | ((value << 8) & 0xff0000) | ((value >> 8) & 0xff00) | ((value << 24) & 0xff000000);
+    }
+    uint ReadValue()
+    {
+        uint value = 0;
+        byte byteRead = reader.ReadByte();
+
+        value = byteRead;
+
+        if ((value & 0x80) != 0)
         {
-            uint Swap32(uint value)
+            value &= 0x7F;
+            do
             {
-                return ((value >> 24) & 0xff) | ((value << 8) & 0xff0000) | ((value >> 8) & 0xff00) | ((value << 24) & 0xff000000);
+                byteRead = reader.ReadByte();
+                value = (uint)((value << 7) | (byteRead & 0x7F));
+            } while ((byteRead & 0x80) != 0);
+        }
+
+        return value;
+    }
+
+    string ReadString(uint length)
+    {
+        return new string(reader.ReadChars((int)length));
+    }
+
+    private byte previousStatus = 0;
+    private uint wallTime = 0;
+    public bool endOfTrack = false;
+    public uint maxwallTime = 0;
+
+    public void ParseUpTo(double end)
+    {
+        if (endOfTrack)
+        {
+            return;
+        }
+
+        bool shouldstilldo = false;
+        while (wallTime < end || shouldstilldo)
+        {
+            if (endOfTrack)
+            {
+                return;
             }
-            uint ReadValue()
+            var evt = ReadNextEvent();
+            if (evt.HasValue)
             {
-                uint value = 0;
-                byte byteRead = reader.ReadByte();
-
-                value = byteRead;
-
-                if ((value & 0x80) != 0)
+                if (ProcessNote(evt.Value))
                 {
-                    value &= 0x7F;
-                    do
-                    {
-                        byteRead = reader.ReadByte();
-                        value = (uint)((value << 7) | (byteRead & 0x7F));
-                    } while ((byteRead & 0x80) != 0);
+                    files.Events.Add(evt.Value);
                 }
-
-                return value;
             }
 
-            string ReadString(uint length)
+            shouldstilldo = ActiveNotes.Length != 0;
+        }
+    }
+    private bool ProcessNote(MidiEvent evt)
+    {
+        if (evt.Event == MidiEvent.EventType.NoteOn)
+        {
+            ActiveNotes.Add(new MidiNote
             {
-                return new string(reader.ReadChars((int)length));
-            }
-            reader.BaseStream.Position = position;
-            uint trackID = Swap32(reader.ReadUInt32());
-            uint trackLength = Swap32(reader.ReadUInt32());
-            uint wallTime = 0;
-            byte previousStatus = 0;
-            bool endOfTrack = false;
-            while (fs.Position < fs.Length && !endOfTrack)
+                Key = evt.Key,
+                Velocity = evt.Velocity,
+                StartTime = wallTime,
+                Channel = evt.Channel,
+                Track = track,
+                Duration = 69420f // Se calculará al recibir el NoteOff
+            });
+            return false;
+        }
+        else if (evt.Event == MidiEvent.EventType.NoteOff)
+        {
+            MidiNote? note = null;
+            // Busca la nota activa correspondiente y actualiza su EndTime/Duration
+            foreach (var n in ActiveNotes)
+            {
+                if (n.Key == evt.Key && n.Channel == evt.Channel)
                 {
-                    uint statusTimeDelta = ReadValue();
-                    wallTime += statusTimeDelta;
-                    byte status = reader.ReadByte();
+                    note = n;
+                    break;
+                }
+            }
 
-                    if (status < 0x80)
-                    {
-                        status = previousStatus;
-                        reader.BaseStream.Position -= 1;
-                    }
+            if (note.HasValue)
+            {
+                var notef = note.Value;
+                notef.EndTime = wallTime;
+                notef.Duration = notef.EndTime - notef.StartTime;
+                //notef.Duration = (float)files.GetNoteDurationInMilliseconds(notef);
+                ActiveNotes.Remove(note.Value);
+                files.Notes.Add(notef);
+                return false;
+            }
+        }
+        return true;
+    }
+    public MidiEvent? ReadNextEvent(bool FastRead = false)
+    {
+        if (reader.BaseStream.Position >= stoppoint)
+        {
+            endOfTrack = true;
+            return null;
+        }
+        if (endOfTrack)
+        {
+            return null;
+        }
+        uint statusTimeDelta = ReadValue();
+        wallTime += statusTimeDelta;
+        byte status = reader.ReadByte();
 
-                    if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceNoteOff)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte noteID = reader.ReadByte();
-                        byte noteVelocity = reader.ReadByte();
-                        Events.Add(new MidiEvent(MidiEvent.EventType.NoteOff, noteID, noteVelocity, statusTimeDelta, channel ));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceNoteOn)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte noteID = reader.ReadByte();
-                        byte noteVelocity = reader.ReadByte();
-                        if (noteVelocity == 0)
-                            Events.Add(new MidiEvent(MidiEvent.EventType.NoteOff, noteID, noteVelocity, statusTimeDelta, channel));
-                        else
-                            Events.Add(new MidiEvent(MidiEvent.EventType.NoteOn, noteID, noteVelocity, statusTimeDelta, channel) );
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceAftertouch)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte noteID = reader.ReadByte();
-                        byte noteVelocity = reader.ReadByte();
-                        Events.Add(new MidiEvent (MidiEvent.EventType.Other, noteID, noteVelocity, statusTimeDelta, channel));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceControlChange)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte controlID = reader.ReadByte();
-                        byte controlValue = reader.ReadByte();
-                        Events.Add(new MidiEvent(MidiEvent.EventType.Other, controlID, controlValue, statusTimeDelta, channel));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceProgramChange)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte programID = reader.ReadByte();
-                        Events.Add(new MidiEvent(MidiEvent.EventType.Other, programID, 0, statusTimeDelta, channel));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceChannelPressure)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte channelPressure = reader.ReadByte();
-                        Events.Add(new MidiEvent (MidiEvent.EventType.Other ,0 ,0 ,  statusTimeDelta, channel));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.VoicePitchBend)
-                    {
-                        previousStatus = status;
-                        byte channel = (byte)(status & 0x0F);
-                        byte lsb = reader.ReadByte();
-                        byte msb = reader.ReadByte();
-                        Events.Add(new MidiEvent (MidiEvent.EventType.Other, 0, 0, statusTimeDelta, channel));
-                    }
-                    else if ((status & 0xF0) == (byte)MidiFile.EventName.SystemExclusive)
-                    {
-                        previousStatus = 0;
+        if (status < 0x80)
+        {
+            status = previousStatus;
+            reader.BaseStream.Position -= 1;
+        }
 
-                        if (status == 0xFF)
+        if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceNoteOff)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte noteID = reader.ReadByte();
+            byte noteVelocity = reader.ReadByte();
+            MaxNote = Math.Max(MaxNote, noteID);
+            MinNote = Math.Min(MinNote, noteID);
+            if (FastRead)
+                return null;
+            return (new MidiEvent(MidiEvent.EventType.NoteOff, noteID, noteVelocity, statusTimeDelta, channel ));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceNoteOn)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte noteID = reader.ReadByte();
+            byte noteVelocity = reader.ReadByte();
+            if (FastRead)
+                return null;
+            if (noteVelocity == 0)
+                return (new MidiEvent(MidiEvent.EventType.NoteOff, noteID, noteVelocity, statusTimeDelta, channel));
+            else
+                return (new MidiEvent(MidiEvent.EventType.NoteOn, noteID, noteVelocity, statusTimeDelta, channel) );
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceAftertouch)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte noteID = reader.ReadByte();
+            byte noteVelocity = reader.ReadByte();
+            if (FastRead)
+                return null;
+            return (new MidiEvent (MidiEvent.EventType.Other, noteID, noteVelocity, statusTimeDelta, channel));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceControlChange)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte controlID = reader.ReadByte();
+            byte controlValue = reader.ReadByte();
+            if (FastRead)
+                return null;
+            return (new MidiEvent(MidiEvent.EventType.Other, controlID, controlValue, statusTimeDelta, channel));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceProgramChange)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte programID = reader.ReadByte();
+            if (FastRead)
+                return null;
+            return (new MidiEvent(MidiEvent.EventType.Other, programID, 0, statusTimeDelta, channel));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoiceChannelPressure)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte channelPressure = reader.ReadByte();
+            if (FastRead)
+                return null;
+            return (new MidiEvent (MidiEvent.EventType.Other ,0 ,0 ,  statusTimeDelta, channel));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.VoicePitchBend)
+        {
+            previousStatus = status;
+            byte channel = (byte)(status & 0x0F);
+            byte lsb = reader.ReadByte();
+            byte msb = reader.ReadByte();
+            if (FastRead)
+                return null;
+            return (new MidiEvent (MidiEvent.EventType.Other, 0, 0, statusTimeDelta, channel));
+        }
+        else if ((status & 0xF0) == (byte)MidiFile.EventName.SystemExclusive)
+        {
+            previousStatus = 0;
+
+            if (status == 0xFF)
+            {
+                byte type = reader.ReadByte();
+                uint length = ReadValue();
+
+                switch (type)
+                {
+                    case (byte)MidiFile.MetaEventName.MetaSequence:
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaText:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaCopyright:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaTrackName:
+                        Name = ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaInstrumentName:
+                        Instrument = ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaLyrics:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaMarker:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaCuePoint:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaChannelPrefix:
+                        reader.ReadByte();
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaEndOfTrack:
+                        endOfTrack = true;
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaSetTempo:
+                        if (files.Tempo == 0)
                         {
-                            byte type = reader.ReadByte();
-                            uint length = ReadValue();
-
-                            switch (type)
+                            if (FastRead)
                             {
-                                case (byte)MidiFile.MetaEventName.MetaSequence:
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaText:
-                                    ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaCopyright:
-                                    ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaTrackName:
-                                    Name = ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaInstrumentName:
-                                    Instrument = ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaLyrics:
-                                    ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaMarker:
-                                    ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaCuePoint:
-                                    ReadString(length);
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaChannelPrefix:
-                                    reader.ReadByte();
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaEndOfTrack:
-                                    endOfTrack = true;
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaSetTempo:
-                                    if (files.Tempo == 0)
-                                    {
-                                        files.Tempo = (uint)(reader.ReadByte() << 16);
-                                        files.Tempo |= (uint)(reader.ReadByte() << 8);
-                                        files.Tempo |= (uint)(reader.ReadByte() << 0);
-                                        files.BPM = 60000000 / files.Tempo;
-                                        //Console.WriteLine($"Tempo: {Tempo} ({BPM}bpm)");
-                                    }
-                                    else
-                                    {
-                                        var tempT = (uint)(reader.ReadByte() << 16);
-                                        tempT |= (uint)(reader.ReadByte() << 8);
-                                        tempT |= (uint)(reader.ReadByte() << 0);
+                                files.Tempo = (uint)(reader.ReadByte() << 16);
+                                files.Tempo |= (uint)(reader.ReadByte() << 8);
+                                files.Tempo |= (uint)(reader.ReadByte() << 0);
+                                files.BPM = 60000000 / files.Tempo;
+                            }
+                            else
+                            {
+                                reader.BaseStream.Position += 3;
+                            }
+                            //Console.WriteLine($"Tempo: {Tempo} ({BPM}bpm)");
+                        }
+                        else
+                        {
+                            if (FastRead)
+                            {
+                                var tempT = (uint)(reader.ReadByte() << 16);
+                                tempT |= (uint)(reader.ReadByte() << 8);
+                                tempT |= (uint)(reader.ReadByte() << 0);
 
-                                        TempoChanges.Add(new()
-                                        {
-                                            Tempo = tempT,
-                                            Ticks = wallTime,
-                                            BPM = 60000000 / tempT
-                                        });
-                                    }
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaSMPTEOffset:
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaTimeSignature:
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaKeySignature:
-                                    reader.ReadByte();
-                                    reader.ReadByte();
-                                    break;
-                                case (byte)MidiFile.MetaEventName.MetaSequencerSpecific:
-                                    ReadString(length);
-                                    break;
-                                default:
-                                    Console.WriteLine($"Unrecognised MetaEvent: {type}");
-                                    break;
+                                files.TempoChanges.Add(new()
+                                {
+                                    Tempo = tempT,
+                                    Ticks = wallTime,
+                                    BPM = 60000000 / tempT
+                                });
+                            }
+                            else
+                            {
+                                reader.BaseStream.Position += 3;
                             }
                         }
-                        else if (status == 0xF0)
-                        {
-                            ReadString(ReadValue());
-                        }
-                        else if (status == 0xF7)
-                        {
-                            ReadString(ReadValue());
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Unrecognised Status Byte: {status}");
-                    }
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaSMPTEOffset:
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaTimeSignature:
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaKeySignature:
+                        reader.ReadByte();
+                        reader.ReadByte();
+                        break;
+                    case (byte)MidiFile.MetaEventName.MetaSequencerSpecific:
+                        reader.BaseStream.Position += length;
+                        //ReadString(length);
+                        break;
+                    default:
+                        Console.WriteLine($"Unrecognised MetaEvent: {type}");
+                        break;
                 }
+            }
+            else if (status == 0xF0)
+            {
+                reader.BaseStream.Position += ReadValue();
+                //ReadString(ReadValue());
+            }
+            else if (status == 0xF7)
+            {
+                reader.BaseStream.Position += ReadValue();
+                //ReadString(ReadValue());
+            }
         }
+        else
+        {
+            Console.WriteLine($"Unrecognised Status Byte: {status}");
+        }
+
+        return null;
+    }
+    public void Read()
+    {
+        _reader = new(File.OpenRead(fileName));
+        _reader.BaseStream.Position = position;
+        uint trackID = Swap32(reader.ReadUInt32());
+        uint trackLength = Swap32(reader.ReadUInt32());
+        stoppoint = position + trackLength;
+        while (true)
+        {
+            if (endOfTrack)
+            {
+                break;
+            }
+            ReadNextEvent(true);
+        }
+
+        maxwallTime = wallTime;
+        wallTime = 0;
+        endOfTrack = false;
+
+        _reader.BaseStream.Position = position + 8;
     }
 }
 
@@ -392,36 +542,47 @@ public class MidiFile
                 }
 
                 uint trackLength = Swap32(reader.ReadUInt32());
-                Tracks.Add(new MidiTrack(fileName, reader.BaseStream.Position - 8, this));
+                Console.WriteLine($"Chunk {chunk:N0}/{trackChunks:N0}");
+                Tracks.Add(new MidiTrack(fileName, reader.BaseStream.Position - 8, this, chunk));
     
                 // Saltar la longitud del track
                 reader.BaseStream.Position += trackLength;
             }
 
-            await Parallel.ForEachAsync(Tracks, (track, token) =>
+            Console.WriteLine($"Reading chunks...");
+            /*await Parallel.ForEachAsync(Tracks, PublicObjects.opts, (track, token) =>
             {
                 track.Read();
                 return ValueTask.CompletedTask;
-            });
-            int tc = 1;
+            });*/
+            uint tc = 1;
+            foreach (var track in Tracks)
+            {
+                Console.WriteLine($"Chunk read: {tc++:N0}/{trackChunks:N0}");
+                track.Read();
+            }
             // Convert Time Events to Notes
             uint maxWallTime = 0; // Tiempo máximo en ticks
             foreach (var track in Tracks)
             {
+                maxWallTime = Math.Max(track.maxwallTime, maxWallTime);
+                MaxKey = Math.Max(track.MaxNote, MaxKey);
+                MinKey = Math.Min(track.MinNote, MinKey);
+            }/*
+
+            foreach (var track in Tracks)
+            {
                 uint wallTime = 0;
                 List<MidiNote> activeNotes = new(128); // Preasignar capacidad
-                foreach (var tempo in track.TempoChanges)
-                {
-                    TempoChanges.Add(tempo);
-                }
                 uint sd2 = 0;
-                foreach (var evt in track.Events)
+                foreach (var evt in Events)
                 {
                     sd2 += evt.DeltaTick;
                     wallTime += evt.DeltaTick;
                     if (evt.Event == MidiEvent.EventType.NoteOn)
                     {
-                        track.Events.Remove(evt);
+                        MinKey = Math.Min(evt.Key, MinKey);
+                        MaxKey = Math.Max(evt.Key, MaxKey);
                         activeNotes.Add(new MidiNote
                             { Key = evt.Key, Velocity = evt.Velocity, StartTime = wallTime, Duration = 0, Channel = evt.Channel});
                     }
@@ -433,10 +594,9 @@ public class MidiFile
                             var n = activeNotes[i];
                             if (n.Key == evt.Key && n.Channel == evt.Channel)
                             {
-                                track.Events.Remove(evt);
                                 var note = activeNotes[i];
                                 note.EndTime = wallTime;
-                                note.Duration = (wallTime - note.StartTime);
+                                note.Duration = (float)GetNoteDurationInMilliseconds(note);
                                 note.Track = tc;
                                 Notes.Add(note);
                                 track.MinNote = Math.Min(track.MinNote, note.Key);
@@ -450,7 +610,7 @@ public class MidiFile
 
                 maxWallTime = Math.Max(sd2, maxWallTime);
                 tc++;
-            }
+            }*/
 
             TotalTicks = maxWallTime;/*
             StringBuilder sb = new();
@@ -464,6 +624,50 @@ public class MidiFile
         }
 
         return true;
+    }
+
+    public void ParseUpTo(double start, double end)
+    {
+        Notes.RemoveAll(note =>
+        {
+            return note.EndTime < start;
+        });
+        foreach (var track in Tracks)
+        {
+            track.ParseUpTo(end);
+        }
+    }
+    public double ConvertTicksToSeconds(uint ticks)
+    {
+        if (TempoChanges.ZeroLen) // Si no hay cambios de tempo
+        {
+            // Fórmula básica: (ticks / PPQ) * (Tempo / 1,000,000) → segundos
+            return (double)ticks / PPQ * (Tempo / 1000000.0) * 1000;
+        }
+
+        double timeInSeconds = 0;
+        uint previousTicks = 0;
+        uint previousTempo = Tempo; // Tempo inicial (microsegundos por negra)
+
+        // Iterar sobre los cambios de tempo para calcular segmentos
+        foreach (var change in TempoChanges)
+        {
+            if (change.Ticks > ticks) break; // Si el cambio de tempo está después del tick objetivo, terminar
+
+            // Calcular duración del segmento actual (desde previousTicks hasta change.Ticks)
+            uint segmentTicks = change.Ticks - previousTicks;
+            timeInSeconds += (double)segmentTicks / PPQ * (previousTempo / 1000000.0);
+
+            // Actualizar para el siguiente segmento
+            previousTicks = change.Ticks;
+            previousTempo = change.Tempo;
+        }
+
+        // Calcular el último segmento (desde el último cambio de tempo hasta el tick objetivo)
+        uint remainingTicks = ticks - previousTicks;
+        timeInSeconds += (double)remainingTicks / PPQ * (previousTempo / 1000000.0);
+
+        return timeInSeconds * 1000;
     }
     public double GetDurationInMilliseconds()
     {
@@ -531,10 +735,14 @@ public class MidiFile
         return durationInSeconds * 1000;
     }
 
-    public FastList<MidiNote> Notes = new();
+    public List<MidiNote> Notes = new();
     public FastList<MidiTempoChange> TempoChanges = new();
     public FastList<MidiTrack> Tracks = new();
     public uint Tempo = 0;
+    public byte MinKey = 255;
+    public byte MaxKey = 0;
+    
+    public FastList<MidiEvent> Events = new();
     public uint BPM = 0;
     public uint TotalTicks = 0;
     public uint PPQ = 0;

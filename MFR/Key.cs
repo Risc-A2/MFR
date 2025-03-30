@@ -2,23 +2,23 @@
 
 public class Key
 {
-	private FastList<int> pressedTracks = new();
+	private FastList<uint> pressedTracks = new();
 
-	public void AddTrack(int track)
+	public void AddTrack(uint track)
 	{
 		if (pressedTracks.Contains(track))
 			pressedTracks.Remove(track);
 		pressedTracks.Add(track);
 	}
 
-	public void RemoveTrack(int track)
+	public void RemoveTrack(uint track)
 	{
 		pressedTracks.Remove(track);
 	}
 
-	public int GetTopTrack()
+	public uint GetTopTrack()
 	{
-		int t = 0;
+		uint t = 0;
 		foreach (var v in pressedTracks)
 		{
 			t = v;
