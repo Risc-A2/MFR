@@ -1,4 +1,4 @@
-﻿namespace MFR;
+﻿namespace MFR_Core;
 using SkiaSharp;
 using System.Collections.Generic;
 
@@ -27,7 +27,7 @@ public class MidiNoteRenderer
         _yOffset = yOffset;
     }
 
-    public (Dictionary<int, SKRect> KeyRects, float[] WhiteKeyCenters) GenerateKeys(int displayWidth)
+    public (Dictionary<int, SKRect> KeyRects, float[] WhiteKeyCenters) GenerateKeys(float displayWidth)
     {
         var keyRects = new Dictionary<int, SKRect>(); // Mapeo MIDI → Rectángulo
         var whiteKeyCenters = new List<float>();

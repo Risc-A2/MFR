@@ -1,4 +1,4 @@
-﻿namespace MFR;
+﻿namespace MFR_Core;
 
 using System.Diagnostics;
 

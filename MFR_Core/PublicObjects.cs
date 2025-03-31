@@ -1,4 +1,4 @@
-﻿namespace MFR;
+﻿namespace MFR_Core;
 
 public class PublicObjects
 {

@@ -2,6 +2,10 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MFR", "MFR\MFR.csproj", "{D0DAF962-ED14-44F8-97FA-181B1F8B9F4A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MFR_Core", "MFR_Core\MFR_Core.csproj", "{9C85DF23-6D55-45EA-843C-AF224864113D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MFR_GUI", "MFR_GUI\MFR_GUI.csproj", "{115D220C-2EAB-49E1-AAF7-50B1DED3E6FD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +16,13 @@ Global
 		{D0DAF962-ED14-44F8-97FA-181B1F8B9F4A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{D0DAF962-ED14-44F8-97FA-181B1F8B9F4A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{D0DAF962-ED14-44F8-97FA-181B1F8B9F4A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9C85DF23-6D55-45EA-843C-AF224864113D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9C85DF23-6D55-45EA-843C-AF224864113D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9C85DF23-6D55-45EA-843C-AF224864113D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9C85DF23-6D55-45EA-843C-AF224864113D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{115D220C-2EAB-49E1-AAF7-50B1DED3E6FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{115D220C-2EAB-49E1-AAF7-50B1DED3E6FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{115D220C-2EAB-49E1-AAF7-50B1DED3E6FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{115D220C-2EAB-49E1-AAF7-50B1DED3E6FD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

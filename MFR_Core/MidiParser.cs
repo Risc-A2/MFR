@@ -7,7 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text;
 
-namespace MFR;
+namespace MFR_Core;
 
 public readonly struct MidiEvent
 {

@@ -1,6 +1,6 @@
 ﻿using SkiaSharp;
 
-namespace MFR;
+namespace MFR_Core;
 
 public struct NoteRect
 {

@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-namespace MFR
+namespace MFR_Core
 {
     public class FastList<T> : IEnumerable<T>, IDisposable
     {
